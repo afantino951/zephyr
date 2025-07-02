@@ -137,6 +137,10 @@ New Boards
 
   * :zephyr:board:`Seeed Wio Tracker L1 <wio_tracker_l1>` (``wio_tracker_l1``)
 
+* Raspberry Pi
+
+   * :zephyr:board:`rpi_pico2` (``rpi_pico2/rp2350a/m33/cpu1``)
+
 New Shields
 ***********
 
