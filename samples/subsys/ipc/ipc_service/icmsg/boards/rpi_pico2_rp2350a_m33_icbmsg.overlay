@@ -1,0 +1,11 @@
+/*
+ * Copyright (c) 2025 Dmitrii Sharshakov <d3dx12.xx@gmail.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&ipc0 {
+	compatible = "zephyr,ipc-icbmsg";
+	tx-blocks = <32>;
+	rx-blocks = <32>;
+};
