@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2024 Andrew Featherstone
+ * Copyright (c) 2025 Dan Collins <dan@collinsnz.com>
+ * Copyright (c) 2025 Dmitrii Sharshakov <d3dx12.xx@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
