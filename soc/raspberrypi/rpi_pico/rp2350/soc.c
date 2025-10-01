@@ -105,7 +105,7 @@ static inline int rpi_pico_validate_vtor(uint32_t cpu1_sp, uint32_t cpu1_pc)
 {
 	/* Stack pointer shall point within RAM assigned to the core. */
 	if (!address_in_range(cpu1_sp, CPU1_SRAM_ADDR, CPU1_SRAM_SIZE)) {
-		LOG_ERR("CPU1 stack pointer 0x%08x invalid.", cpu1_sp);
+		LOG_ERR("CPU1 stack pointer 0x%08x invalid. Range: 0x%08x - 0x%08x", cpu1_sp, CPU1_SRAM_ADDR, (CPU1_SRAM_ADDR + CPU1_SRAM_SIZE));
 		return -EINVAL;
 	}
 
