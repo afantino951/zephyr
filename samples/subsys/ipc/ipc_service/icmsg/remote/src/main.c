@@ -6,13 +6,26 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+// #include <zephyr/drivers/gpio.h>
 
 #include <zephyr/ipc/ipc_service.h>
 
 #include "common.h"
+#include <hardware/structs/sio.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(remote, LOG_LEVEL_INF);
+
+// /* 1000 msec = 1 sec */
+// #define SLEEP_TIME_MS   1000
+
+// /* The devicetree node identifier for the "led0" alias. */
+// #define LED0_NODE DT_ALIAS(led0)
+// /*
+//  * A build error on this line means your board is unsupported.
+//  * See the sample documentation for information on how to fix this.
+//  */
+// static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 #if defined(CONFIG_MULTITHREADING)
 K_SEM_DEFINE(bound_sem, 0, 1);
@@ -33,6 +46,8 @@ static void ep_bound(void *priv)
 #else
 	bound_sem = 0;
 #endif
+	expected_message = 'a';
+	expected_len = PACKET_SIZE_START;
 	LOG_INF("Ep bounded");
 }
 
@@ -77,6 +92,7 @@ static int send_for_time(struct ipc_ept *ep, const int64_t sending_time_ms)
 
 	while ((k_uptime_get() - start) < sending_time_ms) {
 		ret = ipc_service_send(ep, &msg, mlen);
+		// LOG_INF("SENT MSG");
 		if (ret == -ENOMEM) {
 			/* No space in the buffer. Retry. */
 			ret = 0;
@@ -125,13 +141,27 @@ static struct ipc_ept_cfg ep_cfg = {
 
 int main(void)
 {
+	int ret;
+	// bool led_state = true;
+
+	// if (!gpio_is_ready_dt(&led)) {
+	// 	return 0;
+	// }
+
+	// ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+	// if (ret < 0) {
+	// 	return 0;
+	// }
+
 	const struct device *ipc0_instance;
 	struct ipc_ept ep;
-	int ret;
+	// int ret;
 
 	LOG_INF("IPC-service REMOTE demo started");
+	// LOG_WRN("CPUID  : 0x%08x", sio_hw->cpuid);
 
 	ipc0_instance = DEVICE_DT_GET(DT_NODELABEL(ipc0));
+
 
 	ret = ipc_service_open_instance(ipc0_instance);
 	if ((ret < 0) && (ret != -EALREADY)) {
@@ -139,11 +169,23 @@ int main(void)
 		return ret;
 	}
 
+	while (1) {
 	ret = ipc_service_register_endpoint(ipc0_instance, &ep, &ep_cfg);
 	if (ret < 0) {
 		LOG_ERR("ipc_service_register_endpoint() failure");
 		return ret;
 	}
+
+	// while (1) {
+	// 	ret = gpio_pin_toggle_dt(&led);
+	// 	if (ret < 0) {
+	// 		return 0;
+	// 	}
+
+	// 	led_state = !led_state;
+	// 	printf("LED state: %s\n", led_state ? "ON" : "OFF");
+	// 	k_msleep(SLEEP_TIME_MS);
+	// }
 
 #if defined(CONFIG_MULTITHREADING)
 	k_sem_take(&bound_sem, K_FOREVER);
@@ -161,5 +203,13 @@ int main(void)
 	LOG_INF("Received %zu [Bytes] in total", received);
 	LOG_INF("IPC-service REMOTE demo ended");
 
+	ret = ipc_service_deregister_endpoint(&ep);
+	if (ret != 0) {
+		LOG_ERR("ipc_service_register_endpoint() failure");
+		return ret;
+	}
+	LOG_INF("Waiting for 1s");
+	k_busy_wait(1000000);
+	}
 	return 0;
 }

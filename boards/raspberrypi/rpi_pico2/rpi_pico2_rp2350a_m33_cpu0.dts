@@ -21,6 +21,7 @@
  */
 #include "rpi_pico2.dtsi"
 #include "rpi_pico2_split.dtsi"
+#include "../common/rpi_pico-led.dtsi"
 
 /delete-node/ &cpu1;
 

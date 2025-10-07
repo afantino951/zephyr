@@ -31,12 +31,15 @@ static size_t received;
 
 static void ep_bound(void *priv)
 {
+	LOG_INF("IPC-service HOST ep_bound start!");
 	received = 0;
 #if defined(CONFIG_MULTITHREADING)
 	k_sem_give(&bound_sem);
 #else
 	bound_sem = 0;
 #endif
+	expected_message = 'A';
+	expected_len = PACKET_SIZE_START;
 	LOG_INF("Ep bounded");
 }
 
@@ -159,12 +162,15 @@ int main(void)
 		LOG_ERR("ipc_service_open_instance() failure");
 		return ret;
 	}
+	LOG_INF("IPC-service HOST open instance complete");
 
+	while(1) {
 	ret = ipc_service_register_endpoint(ipc0_instance, &ep, &ep_cfg);
 	if (ret < 0) {
 		LOG_ERR("ipc_service_register_endpoint() failure");
 		return ret;
 	}
+	LOG_INF("IPC-service HOST endpoint registered");
 
 #if defined(CONFIG_MULTITHREADING)
 	k_sem_take(&bound_sem, K_FOREVER);
@@ -173,6 +179,7 @@ int main(void)
 	};
 #endif
 
+	LOG_INF("IPC-service HOST took sem");
 	ret = send_for_time(&ep, SENDING_TIME_MS);
 	if (ret < 0) {
 		LOG_ERR("send_for_time() failure");
@@ -231,5 +238,14 @@ int main(void)
 
 	LOG_INF("IPC-service HOST demo ended");
 
+	ret = ipc_service_deregister_endpoint(&ep);
+	if (ret != 0) {
+		LOG_ERR("ipc_service_register_endpoint() failure");
+		return ret;
+	}
+
+	LOG_INF("Waiting for 1s");
+	k_busy_wait(1000000);
+	}
 	return 0;
 }

@@ -13,6 +13,13 @@
 	};
 };
 
+/*
+&led0 {
+	status = "okay";
+};
+*/
+
+
 / {
 	ipc {
 		ipc0: ipc0 {

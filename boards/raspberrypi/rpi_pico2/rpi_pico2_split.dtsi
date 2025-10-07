@@ -6,6 +6,27 @@
 
 #include <mem.h>
 
+&flash0 {
+	status = "okay";
+	reg = <0x10000000 DT_SIZE_M(4)>;
+
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+
+		flash0_cpu0: partition@0 {
+			label = "cpu0-flash";
+			reg = <0x0 DT_SIZE_M(2)>;
+		};
+
+		cpu1_slot0_partition: partition@200000 {
+			label = "cpu1-flash";
+			reg = <0x200000 DT_SIZE_K(256)>;
+		};
+	};
+};
+
 / {
 	reserved-memory {
 		#address-cells = <1>;

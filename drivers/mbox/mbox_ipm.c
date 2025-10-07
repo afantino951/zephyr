@@ -50,7 +50,7 @@ static void mbox_dispatcher(const struct device *ipmdev, void *user_data, uint32
 	}
 
 	if (!(data->enabled_mask & BIT(id))) {
-		LOG_WRN("RX event on disabled channel %u", id);
+		LOG_WRN("RX event on disabled channel %u, mask 0x%x, cb: %p", id, data->enabled_mask, data->cb[id]);
 	}
 
 	if (data->cb[id] != NULL) {
@@ -115,6 +115,7 @@ static int mbox_ipm_set_enabled(const struct device *dev, uint32_t channel, bool
 
 	if ((enable == 0 && (!(data->enabled_mask & BIT(channel)))) ||
 	    (enable != 0 && (data->enabled_mask & BIT(channel)))) {
+		LOG_WRN("Channel %d, already set enable %d\n", channel, enable);
 		return -EALREADY;
 	}
 

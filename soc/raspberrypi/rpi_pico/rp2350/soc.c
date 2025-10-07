@@ -14,11 +14,12 @@
  * for the Raspberry Pi RP235xx (RP2350A, RP2350B, RP2354A, RP2354B).
  */
 
-#if CONFIG_SOC_RESET_HOOK
-#include <pico/runtime_init.h>
 #if CONFIG_RISCV
 #include <hardware/riscv_platform_timer.h>
 #endif
+
+#if CONFIG_SOC_RESET_HOOK
+#include <pico/runtime_init.h>
 
 void soc_reset_hook(void)
 {
@@ -78,8 +79,8 @@ static void rpi_pico_load_cpu1_image(void)
 #if DT_NODE_HAS_COMPAT(DT_GPARENT(DT_NODELABEL(cpu1_slot0_partition)), soc_nv_flash)
 /* Flash partitions have addresses relative to the flash base */
 #define CPU1_CODE_ADDR                                                                             \
-	DT_REG_ADDR(DT_GPARENT(DT_NODELABEL(cpu1_slot0_partition))) +                              \
-		DT_REG_ADDR(DT_NODELABEL(cpu1_slot0_partition))
+	(DT_REG_ADDR(DT_GPARENT(DT_NODELABEL(cpu1_slot0_partition))) +                              \
+		DT_REG_ADDR(DT_NODELABEL(cpu1_slot0_partition)))
 #else
 /* Code in RAM, e.g. a section or debug build */
 #define CPU1_CODE_ADDR DT_REG_ADDR(DT_NODELABEL(cpu1_slot0_partition))
@@ -96,9 +97,14 @@ static void rpi_pico_load_cpu1_image(void)
 	void *src_mem = (void *)CPU1_CODE_ADDR;
 	void *exec_mem = (void *)CPU1_SRAM_ADDR;
 
+	uint32_t *src_vtor = src_mem;
+	uint32_t *exec_vtor = exec_mem;
+
 	LOG_DBG("Copying image from %p to %p", src_mem, exec_mem);
 
 	memcpy(exec_mem, src_mem, MIN(CPU1_SRAM_SIZE, CPU1_CODE_SIZE));
+	LOG_DBG("SRC:  %p: %#010x\t%#010x\t%#010x\t%#010x\t", src_mem, src_vtor[0], src_vtor[1], src_vtor[2], src_vtor[3]);
+	LOG_DBG("DEST: %p: %#010x\t%#010x\t%#010x\t%#010x\t", exec_mem, exec_vtor[0], exec_vtor[1], exec_vtor[2], exec_vtor[3]);
 }
 #endif /* DT_NODE_EXISTS(DT_NODELABEL(cpu1_slot0_partition)) */
 
@@ -112,7 +118,7 @@ static inline int rpi_pico_validate_vtor(uint32_t cpu1_sp, uint32_t cpu1_pc)
 {
 	/* Stack pointer shall point within RAM assigned to the core. */
 	if (!address_in_range(cpu1_sp, CPU1_SRAM_ADDR, CPU1_SRAM_SIZE)) {
-		LOG_ERR("CPU1 stack pointer 0x%08x invalid.", cpu1_sp);
+		LOG_ERR("CPU1 stack pointer 0x%08x invalid: 0x%08x - 0x%08x.", cpu1_sp, CPU1_SRAM_ADDR, (CPU1_SRAM_ADDR+CPU1_SRAM_SIZE));
 		return -EINVAL;
 	}
 
@@ -129,9 +135,11 @@ static inline int rpi_pico_validate_vtor(uint32_t cpu1_sp, uint32_t cpu1_pc)
 }
 #endif /* CONFIG_SOC_RP2350_CPU1_ENABLE_CHECK_VTOR */
 
+// #include <hardware/irq.h>
 static int rpi_pico_reset_cpu1(sio_hw_t *const sio_regs, psm_hw_t *const psm_regs)
 {
 	uint32_t val;
+	// uint32_t key;
 
 	/* Power off, and wait for it to take effect. */
 	hw_set_bits(&psm_regs->frce_off, PSM_FRCE_OFF_PROC1_BITS);
@@ -139,12 +147,19 @@ static int rpi_pico_reset_cpu1(sio_hw_t *const sio_regs, psm_hw_t *const psm_reg
 		k_busy_wait(1);
 	}
 
+	// key = irq_lock();
+	// irq_disable(25);
+	// bool enabled = irq_is_enabled(25);
+	// irq_set_enabled(25, false);
 	/*
 	 * Power back on, and we can wait for a '0' in the FIFO to know
 	 * that it has come back.
 	 */
 	hw_clear_bits(&psm_regs->frce_off, PSM_FRCE_OFF_PROC1_BITS);
 	val = rpi_pico_mailbox_pop_blocking(sio_regs);
+	// irq_unlock(key);
+	// irq_set_enabled(25, enabled);
+	// irq_enable(25);
 
 	return val == 0 ? 0 : -EIO;
 }
@@ -152,10 +167,14 @@ static int rpi_pico_reset_cpu1(sio_hw_t *const sio_regs, psm_hw_t *const psm_reg
 static void rpi_pico_boot_cpu1(sio_hw_t *const sio_regs, uint32_t vector_table_addr,
 			       uint32_t stack_ptr, uint32_t pc)
 {
+	// irq_disable(25);
+
 	/* We synchronise with CPU1 and then we can hand over the memory addresses. */
 	uint32_t cmds[] = {0, 0, 1, vector_table_addr, stack_ptr, pc};
 	uint32_t seq = 0;
 
+	// bool enabled = irq_is_enabled(25);
+	// irq_set_enabled(25, false);
 	do {
 		uint32_t cmd = cmds[seq], rsp;
 
@@ -174,8 +193,12 @@ static void rpi_pico_boot_cpu1(sio_hw_t *const sio_regs, uint32_t vector_table_a
 
 		seq = (cmd == rsp) ? seq + 1 : 0;
 	} while (seq < ARRAY_SIZE(cmds));
+
+	// irq_set_enabled(25, enabled);
+	// irq_enable(25);
 }
 
+#include <pico/runtime_init.h>
 void soc_late_init_hook(void)
 {
 #if DT_NODE_EXISTS(DT_NODELABEL(cpu1_slot0_partition))
