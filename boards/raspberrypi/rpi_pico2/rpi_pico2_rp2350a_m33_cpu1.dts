@@ -44,3 +44,11 @@
 zephyr_udc0: &usbd {
 	status = "okay";
 };
+
+gpio0_lo: &gpio0 {
+	status = "okay";
+};
+
+&timer1 {
+	status = "okay";
+};
