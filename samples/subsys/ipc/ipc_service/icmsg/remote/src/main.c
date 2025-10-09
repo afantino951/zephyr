@@ -125,6 +125,13 @@ static struct ipc_ept_cfg ep_cfg = {
 
 int main(void)
 {
+	/*
+	* Added delay here and say no logs after boot message. Implies deadlock is
+	* not related to message passing, maybe driver/soc init?
+	*/
+
+	// k_msleep(1000);
+
 	const struct device *ipc0_instance;
 	struct ipc_ept ep;
 	int ret;
