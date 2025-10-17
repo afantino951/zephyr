@@ -12,6 +12,14 @@ board_runner_args(openocd --cmd-pre-init "source [find target/rp2350.cfg]")
 # https://www.raspberrypi.com/documentation/microcontrollers/debug-probe.html#debugging-with-swd
 board_runner_args(openocd --cmd-pre-init "set_adapter_speed_if_not_set 5000")
 
+if(CONFIG_BOARD_RPI_PICO2_RP2350A_M33_CPU1)
+	# board_runner_args(openocd --cmd-reset-run "cold_reset")
+
+	# board_runner_args(openocd --cmd-post-verify "rp2xxx rom_api_call RB 0 50 0 0")
+	board_runner_args(openocd --cmd-post-verify "cold_reset")
+	board_runner_args(openocd --cmd-post-verify "shutdown")
+endif()
+
 board_runner_args(jlink "--device=RP2350_M33_0")
 board_runner_args(uf2 "--board-id=RP2350")
 
