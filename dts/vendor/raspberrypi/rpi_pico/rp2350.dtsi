@@ -498,7 +498,7 @@
 				interrupt-names = "mbox0";
 				fifo-depth = <4>;
 				#mbox-cells = <0>;
-				status = "okay";
+				status = "disabled";
 			};
 		};
 
@@ -512,7 +512,7 @@
 			compatible = "zephyr,mbox-ipm";
 			mboxes = <&mbox>, <&mbox>;
 			mbox-names = "tx", "rx";
-			status = "okay";
+			status = "disabled";
 		};
 	};
 
