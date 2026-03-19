@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <vendor/raspberrypi/rp2350_amp_sram_partitions.dtsi>
+
+/ {
+	chosen {
+		zephyr,sram = &sram0_cpu0;
+		zephyr,code-cpu1-partition = &cpu1_slot0_partition;
+		zephyr,sram-cpu1-partition = &sram0_cpu1;
+	};
+};
+
+&flash0 {
+	/delete-node/ partitions;
+};
+
+#define WITH_CPU1_PARTITIONS
+#include <vendor/raspberrypi/partitions_4M_default.dtsi>
