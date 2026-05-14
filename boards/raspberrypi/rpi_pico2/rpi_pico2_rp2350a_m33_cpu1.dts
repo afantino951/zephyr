@@ -24,6 +24,12 @@
 
 / {
 	chosen {
+		/* Delete CPU0 chosen properties */
+		/delete-property/ zephyr,flash;
+		/delete-property/ zephyr,flash-controller;
+		/delete-property/ zephyr,console;
+		/delete-property/ zephyr,shell-uart;
+
 		zephyr,sram = &sram0_cpu1;
 		/* Flash is only assigned to CPU0, CPU1 must
 		 * execute from RAM to avoid access conflicts
@@ -33,8 +39,52 @@
 		 */
 		zephyr,code-partition = &sram0_cpu1;
 	};
+
+	aliases {
+		/delete-property/ watchdog0;
+	};
 };
 
 zephyr_udc0: &usbd {
 	status = "okay";
+};
+
+&uart0 {
+	status = "reserved";
+};
+
+gpio0_lo: &gpio0 {
+	status = "reserved";
+};
+
+&spi0 {
+	status = "reserved";
+};
+
+&i2c0 {
+	status = "reserved";
+};
+
+&i2c1 {
+	status = "reserved";
+};
+
+&adc {
+	status = "reserved";
+};
+
+&pwm {
+	status = "reserved";
+};
+
+&timer0 {
+	status = "reserved";
+};
+
+&wdt0 {
+	status = "reserved";
+};
+
+&rng {
+	status = "reserved";
 };
