@@ -16,6 +16,11 @@ endif()
 # https://www.raspberrypi.com/documentation/microcontrollers/debug-probe.html#debugging-with-swd
 board_runner_args(openocd --cmd-pre-init "set_adapter_speed_if_not_set 5000")
 
+# HACK: For some reason, the CPU1 will be flashed, but will get be deadlocked
+# during boot. The "cold_reset" OpenOCD command is specific to the rp2350
+# target in Raspberry Pi's downstream fork of OpenOCD and is equivalent to a
+# rescue reset from Section 3.5.9 of the rp2350 datasheet or grounding the RUN
+# pin.
 if(CONFIG_BOARD_RPI_PICO2_RP2350A_M33_CPU1)
   board_runner_args(openocd --cmd-post-verify "cold_reset")
   board_runner_args(openocd --cmd-post-verify "shutdown")
