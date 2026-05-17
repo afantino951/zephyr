@@ -8,5 +8,6 @@ toolchain:
   - zephyr
   - gnuarmemb
 supported:
+  - gpio
   - hwinfo
   - usbd

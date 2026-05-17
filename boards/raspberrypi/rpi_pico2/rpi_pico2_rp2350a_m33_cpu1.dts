@@ -22,6 +22,10 @@
 #include "rpi_pico2.dtsi"
 #include <raspberrypi/rp2350_shared_reserved_memory.dtsi>
 
+/* Include default memory partition configuration file */
+#define WITH_CPU1_PARTITIONS
+#include <raspberrypi/partitions_4M_default.dtsi>
+
 / {
 	chosen {
 		/* Delete CPU0 chosen properties */
@@ -33,11 +37,11 @@
 		zephyr,sram = &sram0_cpu1;
 		/* Flash is only assigned to CPU0, CPU1 must
 		 * execute from RAM to avoid access conflicts
-		 * You can add a code-partition
-		 * Then add image-source to the &cpu1_launcher on cpu0
-		 * zephyr,code-partition = &cpu1_slot0_partition;
+		 * This code parition is only here to set the
+		 * correct address for flashing. The code is
+		 * moved to and executes from &sram0_cpu1.
 		 */
-		zephyr,code-partition = &sram0_cpu1;
+		zephyr,code-partition = &cpu1_slot0_partition;
 	};
 
 	aliases {
@@ -50,10 +54,6 @@ zephyr_udc0: &usbd {
 };
 
 &uart0 {
-	status = "reserved";
-};
-
-gpio0_lo: &gpio0 {
 	status = "reserved";
 };
 
