@@ -31,8 +31,6 @@
 		/* Delete CPU0 chosen properties */
 		/delete-property/ zephyr,flash;
 		/delete-property/ zephyr,flash-controller;
-		/delete-property/ zephyr,console;
-		/delete-property/ zephyr,shell-uart;
 
 		zephyr,sram = &sram0_cpu1;
 		/* Flash is only assigned to CPU0, CPU1 must
@@ -42,6 +40,10 @@
 		 * moved to and executes from &sram0_cpu1.
 		 */
 		zephyr,code-partition = &cpu1_slot0_partition;
+		// zephyr,console = &board_cdc_acm_uart;
+		// zephyr,shell-uart = &board_cdc_acm_uart;
+		zephyr,console = &uart1;
+		zephyr,shell-uart = &uart1;
 	};
 
 	aliases {
@@ -51,10 +53,18 @@
 
 zephyr_udc0: &usbd {
 	status = "okay";
+	board_cdc_acm_uart: board_cdc_acm_uart {
+		compatible = "zephyr,cdc-acm-uart";
+	};
 };
 
 &uart0 {
 	status = "reserved";
+};
+
+&uart1 {
+	current-speed = <115200>;
+	status = "okay";
 };
 
 &spi0 {
