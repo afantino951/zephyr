@@ -131,3 +131,20 @@ tests:
       regex:
         - "Ping \\(on channel 21\\)"
         - "Pong \\(on channel 20\\)"
+
+  sample.drivers.mbox.rp2350:
+    platform_allow:
+      - rpi_pico2/rp2350a/m33
+    integration_platforms:
+      - rpi_pico2/rp2350a/m33
+    extra_args:
+      - icmsg_SNIPPET=rp2xxx-cpu1
+      # When the remote CPU does not have a console configured, the sample would hang
+      - remote_CONFIG_LOG=n
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: false
+      regex:
+        - "Pong \\(on channel.0\\)"
+        - "Ping \\(on channel.0\\)"
