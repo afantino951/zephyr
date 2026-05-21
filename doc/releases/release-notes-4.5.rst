@@ -114,6 +114,10 @@ New Boards
   that this list will be recomputed at the time of the release, so you don't *have* to update it.
   In any case, just link the board, further details go in the board description.
 
+* Raspberry Pi
+
+   * :zephyr:board:`rpi_pico2` (``rpi_pico2/rp2350a/m33/cpu1``)
+
 New Shields
 ***********
 

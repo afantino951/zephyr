@@ -1,0 +1,50 @@
+# Copyright (c)  Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_RPI_PICO_IS_CPU1
+	bool
+	help
+		Hidden marker selected by every CPU1-side SoC variant. Used to
+		gate Kconfig options that are only meaningful in CPU0 firmware,
+		such as SOC_RPI_PICO_CPU1_ENABLE.
+
+config SOC_RPI_PICO_CPU1_ENABLE
+	bool "Boot the second CPU core"
+	depends on (SOC_SERIES_RP2040 || SOC_SERIES_RP2350) && !SOC_RPI_PICO_IS_CPU1
+	select SOC_LATE_INIT_HOOK
+	help
+	  If enabled, the second CPU will be powered up and pointed to its
+	  application entrypoint during SoC late init hook.
+
+config SOC_RPI_PICO_CPU1_RELOCATE_IMAGE
+	bool "Relocate CPU1's code to SRAM"
+	depends on SOC_RPI_PICO_CPU1_ENABLE
+	default n if (SOC_RPI_PICO_IS_CPU1 && XIP)
+	default y if SOC_RPI_PICO_CPU1_ENABLE
+	help
+	  If enabled, the CPU1 image is copied from flash into SRAM before CPU1 is
+	  started. This avoids XIP cache contention between CPU0 and CPU1 competing
+	  for flash bus access.
+
+if SOC_RPI_PICO_CPU1_ENABLE
+
+DT_CHOSEN_Z_CODE_CPU1_PARTITION := zephyr,code-cpu1-partition
+DT_CHOSEN_Z_SRAM_CPU1_PARTITION := zephyr,sram-cpu1-partition
+
+config SOC_RPI_PICO_CPU1_IMAGE_ADDRESS
+	hex
+	default $(dt_chosen_reg_addr_hex,$(DT_CHOSEN_Z_CODE_CPU1_PARTITION)) \
+		if !SOC_RPI_PICO_CPU1_RELOCATE_IMAGE
+	default $(dt_chosen_reg_addr_hex,$(DT_CHOSEN_Z_SRAM_CPU1_PARTITION)) \
+		if SOC_RPI_PICO_CPU1_RELOCATE_IMAGE
+	help
+	  The flash or SRAM address CPU1 will begin executing from,
+	  derived from the active code partition chosen node.
+
+config SOC_RPI_PICO_CPU1_ENABLE_CHECK_VTOR
+	bool "Check VTOR before booting the second core"
+	default y
+	help
+	  Verify that VTOR pointers are valid before booting the second CPU.
+
+endif # SOC_RPI_PICO_CPU1_ENABLE
