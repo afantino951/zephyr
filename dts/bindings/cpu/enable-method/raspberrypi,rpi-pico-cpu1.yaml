@@ -1,0 +1,42 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+title: Raspberry Pi Pico series secondary CPU enable-method
+
+description: |
+  The Raspberry Pi Pico family of SoCs uses a series of SIO inter-processor FIFO
+  reads/writes to bring the second core (CPU1) out of its quiescent state. The
+  launch sequence points CPU1 to its stack pointer and program counter.
+
+  CPU0 is responsible for relocating CPU1's image if necessary. For
+  example, if CPU1 is built to execute from SRAM, but is loaded into flash.
+
+  Sample usage
+
+  &cpu1 {
+      compatible = "raspberrypi,rpi-pico-cpu1", "arm,cortex-m33";
+      enable-method = "raspberrypi,rpi-pico-cpu1";
+      execution-memory = <&sram0_cpu1>;
+      source-memory = <&cpu1_slot0_partition>;
+      status = "okay";
+  };
+
+compatible: "raspberrypi,rpi-pico-cpu1"
+
+include: cpu.yaml
+
+properties:
+  enable-method:
+    const: "raspberrypi,rpi-pico-cpu1"
+
+  execution-memory:
+    type: phandle
+    required: true
+    description: |
+      Phandle to the memory region or partition from which CPU1 will execute.
+
+  source-memory:
+    type: phandle
+    description: |
+      Phandle to the memory region or partition from which the CPU1 code will be
+      loaded into execution-memory.
