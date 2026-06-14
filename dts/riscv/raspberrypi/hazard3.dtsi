@@ -39,7 +39,9 @@
 };
 
 &cpu1 {
-	compatible = "riscv";
+	compatible = "raspberrypi,rpi-pico-cpu1", "riscv";
 	riscv,isa-base = "rv32i";
 	riscv,isa-extensions = "i", "m", "a", "c", "zicsr", "zifencei", "zba", "zbb", "zbkb", "zbs";
+	enable-method = "raspberrypi,rpi-pico-cpu1";
+	status = "disabled";
 };

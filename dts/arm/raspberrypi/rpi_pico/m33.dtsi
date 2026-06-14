@@ -14,7 +14,9 @@
 };
 
 &cpu1 {
-	compatible = "arm,cortex-m33";
+	compatible = "raspberrypi,rpi-pico-cpu1", "arm,cortex-m33";
+	enable-method = "raspberrypi,rpi-pico-cpu1";
+	status = "disabled";
 };
 
 &nvic {
