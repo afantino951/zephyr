@@ -10,14 +10,35 @@
 	chosen {
 		zephyr,sram = &sram0_cpu0;
 	};
+
+	// cpu1-launcher {
+	// 	compatible = "raspberrypi,pico-pcbs";
+	// 	execution-memory = <&sram0_cpu1>;
+	// 	source-memory = <&cpu1_slot0_partition>;
+	// 	status = "okay";
+	// };
+
+    domains {
+      compatible = "zephyr,domains";
+	  status = "okay";
+	  cpu0-domain {
+        cpus = <&cpu0>;
+        execution-memory = <&sram0_cpu0>;
+        source-memory = <&code_partition>;
+      };
+
+      cpu1-domain {
+        cpus = <&cpu1>;
+        execution-memory = <&sram0_cpu1>;
+        source-memory = <&cpu1_slot0_partition>;
+      };
+    };
 };
 
 &cpu1 {
-	compatible = "raspberrypi,rpi-pico-cpu1", "arm,cortex-m33";
-	enable-method = "raspberrypi,rpi-pico-cpu1";
-	execution-memory = <&sram0_cpu1>;
-	source-memory = <&cpu1_slot0_partition>;
-	status = "okay";
+	compatible = "arm,cortex-m33";
+	// enable-method = "raspberrypi,pico-pcbs";
+	status = "disabled";
 };
 
 &flash0 {

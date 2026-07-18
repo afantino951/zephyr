@@ -10,13 +10,12 @@
 	chosen {
 		zephyr,sram = &sram0_cpu0;
 	};
-};
 
-&cpu1 {
-	compatible = "raspberrypi,rpi-pico-cpu1", "arm,cortex-m33";
-	enable-method = "raspberrypi,rpi-pico-cpu1";
-	execution-memory = <&cpu1_slot0_partition>;
-	status = "okay";
+	cpu1-launcher {
+		compatible = "raspberrypi,pico-pcbs";
+		execution-memory = <&cpu1_slot0_partition>;
+		status = "okay";
+	};
 };
 
 &flash0 {

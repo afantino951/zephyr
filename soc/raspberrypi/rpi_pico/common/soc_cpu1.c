@@ -17,25 +17,86 @@
 
 LOG_MODULE_REGISTER(soc_rpi_pico_cpu1, CONFIG_SOC_LOG_LEVEL);
 
+// TODO: DT_PATH(cpu-launcher)
+// Say write a compatible for the cpu-launcher node such as
+// raspberrypi,cpu1-launcher. The SoC verfies that CPU1 exists and has
+// enable-method = "..." and has cpu-launcher status ok
+// 
+// Document in rpi specific CPU1s yalms with the const enable-method added
+// Description in enable-method tells us that we need the cpu-launcher node path 
+// soc.c gets the cpu1's enable method and verifies the cpu-launhers compat and does what it needs to do based on that
+
+/*
+ * Use DT_PATH instead of DT_NODELABEL for cpu1-en node
+ *
+ * In the enable-method binding:
+ * 	- const the enable-method
+ *  - In the description of the const'ed enable-method property, explain that
+ *  there needs to be a node in the top level DTS with the name cpu-launcher and
+ *  a compatible = enable-method str
+ *  - We should have an enable-method binding for the rpi-pico series for ARM cores and riscv cores.
+ *
+ * In the cpu-enable node:
+ *  - In the description
+ * 
+ * For the rfc, 
+ *  soc.c gets the secondary CPU's enable method and verifies that the
+ *  cpu-launcher node compat matches the enable-method str and does what it
+ *  needs to do to launch based on the cpu-launcher node
+ */
+
 #define CPU1_NODE DT_NODELABEL(cpu1)
-BUILD_ASSERT((DT_NODE_HAS_COMPAT_STATUS(CPU1_NODE, raspberrypi_rpi_pico_cpu1, okay)),
-	     "CPU1 must have compatible = raspberrypi,rpi-pico-cpu1");
 
-#define HAS_CPU1_SOURCE DT_NODE_HAS_PROP(CPU1_NODE, source_memory)
-#if HAS_CPU1_SOURCE
-BUILD_ASSERT((DT_PARTITION_EXISTS(DT_PHANDLE(CPU1_NODE, source_memory))),
+#define DOMAIN_NODE DT_PATH(domains)
+
+/* fn(node_id, prop, idx, cpu_node) for DT_FOREACH_PROP_ELEM_SEP_VARGS */
+#define Z_DT_DOMAIN_CPUS_ELEM_IS(node_id, prop, idx, cpu_node) \
+	DT_SAME_NODE(DT_PHANDLE_BY_IDX(node_id, prop, idx), cpu_node)
+
+/* 1 if any entry in domain node_id's "cpus" array is cpu_node */
+#define Z_DT_DOMAIN_HAS_CPU(node_id, cpu_node) \
+	DT_FOREACH_PROP_ELEM_SEP_VARGS(node_id, cpus, Z_DT_DOMAIN_CPUS_ELEM_IS, (||), cpu_node)
+
+/* fn(node_id, cpu_node) for DT_FOREACH_CHILD_STATUS_OKAY_VARGS */
+#define Z_DT_DOMAIN_SELECT_IF_HAS_CPU(node_id, cpu_node) \
+	COND_CODE_1(Z_DT_DOMAIN_HAS_CPU(node_id, cpu_node), (node_id), ())
+
+/**
+* @brief Get the "zephyr,domains" child node whose "cpus" property
+*        contains @p cpu_node.
+*/
+#define DT_DOMAIN_BY_CPU(cpu_node) \
+	DT_FOREACH_CHILD_STATUS_OKAY_VARGS(DT_PATH(domains), Z_DT_DOMAIN_SELECT_IF_HAS_CPU, cpu_node)
+
+/* Companion for validating exactly-one-match, same idiom as CPU1_LAUNCHER_NODE today */
+#define DT_NUM_DOMAINS_BY_CPU(cpu_node) \
+	DT_FOREACH_CHILD_STATUS_OKAY_SEP_VARGS(DT_PATH(domains), Z_DT_DOMAIN_HAS_CPU, (+), cpu_node)
+
+
+// #define CPU1_DOMAIN_NODE DT_FOREACH_CHILD_STATUS_OKAY(DOMAIN_NODE, _SELECT_IF_HAS_CPU1)
+
+
+/* Verify CPU1's enable-method value matches exactly one node's compatible */
+// BUILD_ASSERT(DT_NUM_INST_STATUS_OKAY(DT_STRING_TOKEN(CPU1_NODE, enable_method)) == 1,
+//              "exactly one enabled node must match cpu1's enable-method compatible");
+// #define CPU1_LAUNCHER_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(DT_STRING_TOKEN(CPU1_NODE, enable_method))
+#define CPU1_LAUNCHER_NODE DT_DOMAIN_BY_CPU(CPU1_NODE)
+
+#define CPU1_LAUNCHER_HAS_SOURCE_MEM DT_NODE_HAS_PROP(CPU1_LAUNCHER_NODE, source_memory)
+#if CPU1_LAUNCHER_HAS_SOURCE_MEM
+BUILD_ASSERT((DT_PARTITION_EXISTS(DT_PHANDLE(CPU1_LAUNCHER_NODE, source_memory))),
 	     "Image source memory must be in a flash partition");
-#define CPU1_SRC_ADDR DT_PARTITION_ADDR(DT_PHANDLE(CPU1_NODE, source_memory))
-#define CPU1_SRC_SIZE DT_REG_SIZE(DT_PHANDLE(CPU1_NODE, source_memory))
-#endif /* HAS_CPU1_SOURCE */
+#define CPU1_SRC_ADDR DT_PARTITION_ADDR(DT_PHANDLE(CPU1_LAUNCHER_NODE, source_memory))
+#define CPU1_SRC_SIZE DT_REG_SIZE(DT_PHANDLE(CPU1_LAUNCHER_NODE, source_memory))
+#endif /* CPU1_LAUNCHER_HAS_SOURCE_MEM */
 
-#define EXEC_MEM_IN_FLASH DT_PARTITION_EXISTS(DT_PHANDLE(CPU1_NODE, execution_memory))
-#if EXEC_MEM_IN_FLASH
-#define CPU1_EXEC_ADDR DT_PARTITION_ADDR(DT_PHANDLE(CPU1_NODE, execution_memory))
+#define CPU1_LAUNCHER_EXEC_MEM_IN_FLASH DT_PARTITION_EXISTS(DT_PHANDLE(CPU1_LAUNCHER_NODE, execution_memory))
+#if CPU1_LAUNCHER_EXEC_MEM_IN_FLASH
+#define CPU1_EXEC_ADDR DT_PARTITION_ADDR(DT_PHANDLE(CPU1_LAUNCHER_NODE, execution_memory))
 #else
-#define CPU1_EXEC_ADDR DT_REG_ADDR(DT_PHANDLE(CPU1_NODE, execution_memory))
-#endif /* EXEC_MEM_IN_FLASH */
-#define CPU1_EXEC_SIZE DT_REG_SIZE(DT_PHANDLE(CPU1_NODE, execution_memory))
+#define CPU1_EXEC_ADDR DT_REG_ADDR(DT_PHANDLE(CPU1_LAUNCHER_NODE, execution_memory))
+#endif /* CPU1_LAUNCHER_EXEC_MEM_IN_FLASH */
+#define CPU1_EXEC_SIZE DT_REG_SIZE(DT_PHANDLE(CPU1_LAUNCHER_NODE, execution_memory))
 
 static inline void rpi_pico_mailbox_put_blocking(sio_hw_t *const sio_regs, uint32_t value)
 {
@@ -62,7 +123,7 @@ static inline uint32_t rpi_pico_mailbox_pop_blocking(sio_hw_t *const sio_regs)
 	return rpi_pico_mbox_read(sio_regs);
 }
 
-#if HAS_CPU1_SOURCE
+#if CPU1_LAUNCHER_HAS_SOURCE_MEM
 static void rpi_pico_load_cpu1_image(void)
 {
 	BUILD_ASSERT((CPU1_EXEC_SIZE >= CPU1_SRC_SIZE),
@@ -79,7 +140,7 @@ static void rpi_pico_load_cpu1_image(void)
 
 	memcpy(exec_mem, src_mem, MIN(CPU1_EXEC_SIZE, CPU1_SRC_SIZE));
 }
-#endif /* HAS_CPU1_SOURCE */
+#endif /* CPU1_LAUNCHER_HAS_SOURCE_MEM */
 
 #ifdef CONFIG_SOC_RPI_PICO_CPU1_ENABLE_CHECK_VTOR
 static inline bool address_in_range(uint32_t addr, uint32_t base, uint32_t size)
@@ -89,7 +150,7 @@ static inline bool address_in_range(uint32_t addr, uint32_t base, uint32_t size)
 
 static inline int rpi_pico_validate_vtor(uint32_t cpu1_sp, uint32_t cpu1_pc)
 {
-#if EXEC_MEM_IN_FLASH
+#if CPU1_LAUNCHER_EXEC_MEM_IN_FLASH
 	/*
 	 * cpu1_sp will be in CPU1's SRAM, but CPU0 does not know where in SRAM that
 	 * is. Skip cpu1_sp validation.
@@ -102,7 +163,7 @@ static inline int rpi_pico_validate_vtor(uint32_t cpu1_sp, uint32_t cpu1_pc)
 	}
 
 	LOG_DBG("CPU1 stack pointer: 0x%08x", cpu1_sp);
-#endif /* EXEC_MEM_IN_FLASH */
+#endif /* CPU1_LAUNCHER_EXEC_MEM_IN_FLASH */
 
 	if (!address_in_range(cpu1_pc, CPU1_EXEC_ADDR, CPU1_EXEC_SIZE)) {
 		LOG_ERR("CPU1 reset pointer 0x%08x invalid.", cpu1_pc);
@@ -161,9 +222,9 @@ static void rpi_pico_boot_cpu1(sio_hw_t *const sio_regs, uint32_t vector_table_a
 
 void soc_late_init_hook(void)
 {
-#if HAS_CPU1_SOURCE
+#if CPU1_LAUNCHER_HAS_SOURCE_MEM
 	rpi_pico_load_cpu1_image();
-#endif /* HAS_CPU1_SOURCE */
+#endif /* CPU1_LAUNCHER_HAS_SOURCE_MEM */
 	uint32_t cpu1_image_base = CPU1_EXEC_ADDR;
 
 	uint32_t *cpu1_vector_table = (void *)cpu1_image_base;

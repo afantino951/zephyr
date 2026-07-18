@@ -25,11 +25,13 @@
 	};
 };
 
-&cpu1 {
-	enable-method = "raspberrypi,rpi-pico-cpu1";
-	execution-memory = <&sram0_cpu1>;
-	source-memory = <&cpu1_slot0_partition>;
-	status = "okay";
+/ {
+	cpu1-launcher {
+		compatible = "raspberrypi,pico-pcbs";
+		execution-memory = <&sram0_cpu1>;
+		source-memory = <&cpu1_slot0_partition>;
+		status = "okay";
+	};
 };
 
 &pinctrl {

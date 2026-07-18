@@ -12,11 +12,9 @@ description: |
   CPU1 is built to execute from SRAM but is loaded into flash).
 
   Example:
-
     / {
-        cpu1_en: cpu1-en {
+        cpu1-launcher {
             compatible = "raspberrypi,pico-pcbs";
-            cpu = <&cpu1>;
             execution-memory = <&sram0_cpu1>;
             source-memory = <&cpu1_slot0_partition>;
             status = "okay";
@@ -25,8 +23,17 @@ description: |
 
 compatible: "raspberrypi,pico-pcbs"
 
-include: cpu-enable.yaml
+include: base.yaml
 
 properties:
   execution-memory:
+    type: phandle
     required: true
+    description: |
+      Phandle to the memory region or partition from which the secondary CPU executes.
+
+  source-memory:
+    type: phandle
+    description: |
+      Phandle to the memory region or partition from which the secondary CPU's image is
+      copied into execution-memory.

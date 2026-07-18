@@ -1,0 +1,61 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Domains
+
+compatible: "zephyr,domains"
+
+include: base.yaml
+
+child-binding:
+  properties:
+    cpus:
+      type: phandles
+      required: true
+      description: |
+        The cpus which the domain applies.
+
+    execution-memory:
+      type: phandle
+      description: |
+        Phandle to the memory region or partition from which CPU1 will execute.
+
+    source-memory:
+      type: phandle
+      description: |
+        Phandle to the memory region or partition from which the CPU1 code will be
+        loaded into execution-memory.
+
+examples:
+  - |
+    /* With Image Relocation */
+    domains {
+      compatible = "zephyr,domains";
+
+      cpu-1 {
+        cpus = <&cpu1>;
+        execution-memory = <&sram0_cpu1>;
+        source-memory = <&cpu1_slot0_partition>;
+      };
+    };
+  - |
+    /* No Image Relocation necessary */
+    domains {
+      compatible = "zephyr,domains";
+
+      cpu-1 {
+        cpus = <&cpu1>;
+        execution-memory = <&cpu1_slot0_partition>;
+      };
+    };
+  - |
+    /* Domain node with multiple CPUs (other image runs SMP) */
+    domains {
+      compatible = "zephyr,domains";
+
+      cpu-1 {
+        cpus = <&cpu1 &cpu2>;
+        execution-memory = <&cpu1_slot0_partition>;
+      };
+    };
