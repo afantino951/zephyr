@@ -40,7 +40,8 @@ BUILD_ASSERT((DT_PARTITION_EXISTS(DT_PHANDLE(CPU1_NODE, source_memory))),
 static inline void rpi_pico_mailbox_put_blocking(sio_hw_t *const sio_regs, uint32_t value)
 {
 	while (!rpi_pico_mbox_write_ready(sio_regs)) {
-		k_busy_wait(1);
+		// k_busy_wait(1);
+		arch_nop();
 	}
 
 	rpi_pico_mbox_write(sio_regs, value);
@@ -121,7 +122,8 @@ static int rpi_pico_reset_cpu1(sio_hw_t *const sio_regs, psm_hw_t *const psm_reg
 	/* Power off, and wait for it to take effect. */
 	hw_set_bits(&psm_regs->frce_off, PSM_FRCE_OFF_PROC1_BITS);
 	while (!(psm_regs->frce_off & PSM_FRCE_OFF_PROC1_BITS)) {
-		k_busy_wait(1);
+		// k_busy_wait(1);
+		arch_nop();
 	}
 
 	/*
@@ -159,7 +161,7 @@ static void rpi_pico_boot_cpu1(sio_hw_t *const sio_regs, uint32_t vector_table_a
 	} while (seq < ARRAY_SIZE(cmds));
 }
 
-void soc_late_init_hook(void)
+void soc_early_init_hook(void)
 {
 #if HAS_CPU1_SOURCE
 	rpi_pico_load_cpu1_image();

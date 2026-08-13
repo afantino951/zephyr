@@ -13,7 +13,8 @@ config SOC_RPI_PICO_CPU1_ENABLE
 	depends on $(dt_nodelabel_enabled_with_compat,cpu1,$(DT_COMPAT_RASPBERRYPI_RPI_PICO_CPU1)) \
 		&& !SOC_FAMILY_RPI_PICO_CPU1
 	default y
-	select SOC_LATE_INIT_HOOK
+	# select SOC_LATE_INIT_HOOK
+	select SOC_EARLY_INIT_HOOK
 	help
 	  If enabled, the second CPU will be powered up and pointed to its
 	  application entrypoint during SoC late init hook.
