@@ -51,7 +51,7 @@ Below is an example of building and flashing the :zephyr:code-sample:`blinky` ap
 
 .. zephyr-app-commands::
     :zephyr-app: samples/basic/blinky
-    :board: rpi_pico2/rp2350a/m33
+    :board: rpi_pico2/rp2350a/m33_0
     :goals: build flash
     :flash-args: --openocd /usr/local/bin/openocd
 
@@ -84,7 +84,7 @@ After fetching the blobs, you can build Wi-Fi applications:
 
 .. zephyr-app-commands::
     :zephyr-app: samples/net/wifi/shell
-    :board: rpi_pico2/rp2350a/m33/w
+    :board: rpi_pico2/rp2350a/m33_0/w
     :goals: build flash
     :flash-args: --openocd /usr/local/bin/openocd
 
