@@ -1,0 +1,451 @@
+#!/usr/bin/env python3
+
+# Copyright (c) 2026 Andrew Fantino
+# SPDX-License-Identifier: Apache-2.0
+
+"""Migrate rp2350a/rp2350b boards from the legacy bare "hazard3"/"m33"
+cpucluster qualifiers to the dual-core-aware "hazard3_0"/"m33_0" qualifiers.
+
+For each board that declares an rp2350a or rp2350b SoC (discovered by
+scanning board.yml files under boards/), this script:
+
+  1. Creates the corresponding "_0"-suffixed board file triple
+     (<board>_<soc>_<cluster>_0.dts / .yaml / _defconfig), for every
+     existing bare-cluster triple (including "_w"/"_mcuboot" siblings).
+     For rpi_pico2 (which already has a partially-migrated "m33" cluster
+     with both bare and "_0" files kept side by side) the bare files are
+     copied, not moved, so nothing that still depends on the bare
+     qualifier is broken mid-transition. Every other board gets a
+     straight rename (git mv) since no "_0" files exist for them yet and
+     nothing external depends on their bare qualifier.
+  2. Adds the missing "select SOC_..._0 if BOARD_..._0" line(s) to each
+     board's Kconfig.<boardname>, mirroring the existing bare-cluster
+     select line.
+  3. Renames SoC-scoped overlays under tests/**/socs/rp2350[ab]_(hazard3|m33).overlay
+     to their "_0" counterpart (git mv), when no "_0" file exists yet.
+  4. Fixes platform_allow / platform_exclude / integration_platforms
+     entries in tests.yaml / sample.yaml files that reference a bare
+     "<board>/rp2350[ab]/(hazard3|m33)" qualifier, rewriting them to the
+     "_0" form. Matching is scoped to exact board/soc/cluster triples
+     discovered in step 1-2, never a blind "/m33" or "/hazard3" replace,
+     since unrelated SoCs (imx943_evk, kit_pse84_eval, etc.) share the
+     "/m33" substring.
+
+Dry-run by default: prints the full plan and writes nothing. Pass
+--apply to perform the renames/edits. Pass --boards to restrict the run
+to a comma-separated list of board names (as declared in board.yml's
+"name:" field).
+"""
+
+import argparse
+import re
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
+
+ZEPHYR_BASE = Path(__file__).resolve().parents[1]
+
+CLUSTER_MAP = {"hazard3": "hazard3_0", "m33": "m33_0"}
+SOCS = ("rp2350a", "rp2350b")
+
+# Boards whose bare-cluster board files must be kept (copied, not
+# renamed) because something may still depend on the bare qualifier
+# during a multi-step migration. Every other board gets a straight
+# rename since its "_0" migration hasn't started at all yet.
+COPY_INSTEAD_OF_RENAME = {"rpi_pico2"}
+
+SUFFIX_VARIANTS = ("", "_w", "_mcuboot", "_w_mcuboot")
+
+
+@dataclass
+class BoardFileTriple:
+    board_dir: Path
+    board_name: str
+    soc: str
+    old_cluster: str
+    new_cluster: str
+    suffix: str  # "", "_w", "_mcuboot", "_w_mcuboot"
+
+    def old_stem(self) -> str:
+        return f"{self.board_name}_{self.soc}_{self.old_cluster}{self.suffix}"
+
+    def new_stem(self) -> str:
+        return f"{self.board_name}_{self.soc}_{self.new_cluster}{self.suffix}"
+
+    def old_paths(self) -> dict:
+        stem = self.old_stem()
+        return {
+            "dts": self.board_dir / f"{stem}.dts",
+            "yaml": self.board_dir / f"{stem}.yaml",
+            "defconfig": self.board_dir / f"{stem}_defconfig",
+        }
+
+    def new_paths(self) -> dict:
+        stem = self.new_stem()
+        return {
+            "dts": self.board_dir / f"{stem}.dts",
+            "yaml": self.board_dir / f"{stem}.yaml",
+            "defconfig": self.board_dir / f"{stem}_defconfig",
+        }
+
+
+@dataclass
+class Plan:
+    board_file_ops: list = field(default_factory=list)  # (mode, triple)
+    kconfig_edits: list = field(default_factory=list)  # (path, new_line)
+    overlay_renames: list = field(default_factory=list)  # (old, new)
+    yaml_edits: list = field(default_factory=list)  # (path, lineno, old, new)
+
+
+def discover_boards(filter_names):
+    """Yield (board_dir, board_name, socs_present) for every board.yml
+    that declares an rp2350a or rp2350b SoC."""
+    for board_yml in sorted((ZEPHYR_BASE / "boards").rglob("board.yml")):
+        try:
+            data = yaml.safe_load(board_yml.read_text())
+        except yaml.YAMLError:
+            continue
+        board = data.get("board") if data else None
+        if not board or "name" not in board:
+            continue
+        socs_present = {s["name"] for s in board.get("socs", []) if s.get("name") in SOCS}
+        if not socs_present:
+            continue
+        board_name = board["name"]
+        if filter_names and board_name not in filter_names:
+            continue
+        yield board_yml.parent, board_name, socs_present
+
+
+def find_board_file_ops(board_dir, board_name, soc, old_cluster, new_cluster):
+    ops = []
+    for suffix in SUFFIX_VARIANTS:
+        triple = BoardFileTriple(board_dir, board_name, soc, old_cluster, new_cluster, suffix)
+        old_paths = triple.old_paths()
+        if not old_paths["dts"].exists():
+            continue
+        new_paths = triple.new_paths()
+        if any(p.exists() for p in new_paths.values()):
+            # Target already exists (already migrated) - nothing to do.
+            continue
+        mode = "copy" if board_name in COPY_INSTEAD_OF_RENAME else "rename"
+        ops.append((mode, triple))
+    return ops
+
+
+def find_kconfig_edit(board_dir, board_name, soc, old_cluster, new_cluster):
+    kconfig_path = board_dir / f"Kconfig.{board_name}"
+    if not kconfig_path.exists():
+        return None
+
+    text = kconfig_path.read_text()
+    board_prefix = f"BOARD_{board_name.upper()}"
+    soc_upper = soc.upper()
+    old_cluster_upper = old_cluster.upper()
+    new_cluster_upper = new_cluster.upper()
+
+    old_soc_symbol = f"SOC_{soc_upper}_{old_cluster_upper}"
+    new_soc_symbol = f"SOC_{soc_upper}_{new_cluster_upper}"
+
+    # Find the existing "select SOC_..._<cluster> if ..." line for this
+    # soc/cluster combination, to know which BOARD_... conditions to
+    # mirror onto the new "_0" select line.
+    old_select_re = re.compile(rf"^(\tselect {re.escape(old_soc_symbol)} if )(.+)$", re.MULTILINE)
+    match = old_select_re.search(text)
+    if not match:
+        return None
+
+    old_conditions = match.group(2)
+    # Each condition is a BOARD_<NAME>_<SOC>_<CLUSTER>[_SUFFIX] symbol;
+    # rewrite <CLUSTER> to <CLUSTER>_0 in each one, preserving suffixes
+    # like _MCUBOOT / _W / _W_MCUBOOT.
+    cluster_token_re = re.compile(
+        rf"\b{re.escape(board_prefix)}_{re.escape(soc_upper)}_{re.escape(old_cluster_upper)}\b"
+    )
+    new_conditions = cluster_token_re.sub(
+        f"{board_prefix}_{soc_upper}_{new_cluster_upper}", old_conditions
+    )
+
+    new_line = f"\tselect {new_soc_symbol} if {new_conditions}"
+
+    # Already present?
+    if new_line in text:
+        return None
+
+    return kconfig_path, match.group(0), new_line
+
+
+def soc_clusters_fully_migrated(migrated_now):
+    """Return the set of (soc, old_cluster) pairs for which every board
+    in the *entire* repo using that soc/cluster combination already has
+    (or will have, after this run) its "_0" board files. A soc-scoped
+    overlay under tests/**/socs/<soc>_<cluster>.overlay is shared by
+    every board with that soc+cluster - renaming it is only safe once
+    none of them are still relying on the bare cluster (boards that
+    keep their bare files around, like rpi_pico2, don't count as
+    "still relying on it" once their own "_0" files exist)."""
+    fully_migrated = set()
+    for soc in SOCS:
+        for old_cluster in CLUSTER_MAP:
+            new_cluster = CLUSTER_MAP[old_cluster]
+            all_boards_have_zero_variant = True
+            for board_dir, board_name, socs_present in discover_boards(None):
+                if soc not in socs_present:
+                    continue
+                triple = BoardFileTriple(board_dir, board_name, soc, old_cluster, new_cluster, "")
+                if not triple.old_paths()["dts"].exists():
+                    # No bare file for this board/soc/cluster at all
+                    # (e.g. board only has the other cluster) - doesn't
+                    # depend on the shared overlay either way.
+                    continue
+                has_zero_already = triple.new_paths()["dts"].exists()
+                being_migrated_now = (board_name, soc, old_cluster) in migrated_now
+                if not has_zero_already and not being_migrated_now:
+                    all_boards_have_zero_variant = False
+                    break
+            if all_boards_have_zero_variant:
+                fully_migrated.add((soc, old_cluster))
+    return fully_migrated
+
+
+def find_overlay_renames(fully_migrated_soc_clusters):
+    renames = []
+    socs_pattern = "|".join(SOCS)
+    clusters_pattern = "|".join(CLUSTER_MAP.keys())
+    name_re = re.compile(rf"^({socs_pattern})_({clusters_pattern})\.overlay$")
+    for socs_dir in sorted(ZEPHYR_BASE.glob("tests/**/socs")) + sorted(
+        ZEPHYR_BASE.glob("samples/**/socs")
+    ):
+        for f in sorted(socs_dir.iterdir()):
+            m = name_re.match(f.name)
+            if not m:
+                continue
+            soc, old_cluster = m.group(1), m.group(2)
+            if (soc, old_cluster) not in fully_migrated_soc_clusters:
+                # Other boards not in scope for this run still have bare
+                # board files depending on this soc-scoped overlay -
+                # renaming it now would break them.
+                continue
+            new_cluster = CLUSTER_MAP[old_cluster]
+            new_path = socs_dir / f"{soc}_{new_cluster}.overlay"
+            if new_path.exists():
+                continue
+            renames.append((f, new_path))
+    return renames
+
+
+def find_yaml_qualifier_edits(board_qualifiers):
+    """board_qualifiers: set of (board_name, soc, old_cluster, new_cluster)
+    that were actually migrated, used to scope the substitution so we
+    never touch an unrelated board/soc sharing the "/m33" or "/hazard3"
+    substring."""
+    edits = []
+    patterns = []
+    for board_name, soc, old_cluster, new_cluster in board_qualifiers:
+        old_qual = f"{board_name}/{soc}/{old_cluster}"
+        new_qual = f"{board_name}/{soc}/{new_cluster}"
+        patterns.append((re.compile(rf"\b{re.escape(old_qual)}\b"), old_qual, new_qual))
+
+    if not patterns:
+        return edits
+
+    for yaml_file in (
+        sorted(ZEPHYR_BASE.glob("tests/**/tests.yaml"))
+        + sorted(ZEPHYR_BASE.glob("tests/**/sample.yaml"))
+        + sorted(ZEPHYR_BASE.glob("samples/**/tests.yaml"))
+        + sorted(ZEPHYR_BASE.glob("samples/**/sample.yaml"))
+    ):
+        lines = yaml_file.read_text().splitlines()
+        for i, line in enumerate(lines):
+            for pattern, old_qual, new_qual in patterns:
+                if pattern.search(line):
+                    new_line = pattern.sub(new_qual, line)
+                    edits.append((yaml_file, i, line, new_line))
+    return edits
+
+
+def build_plan(filter_names):
+    plan = Plan()
+    board_qualifiers = []
+    migrated_now = set()
+
+    for board_dir, board_name, socs_present in discover_boards(filter_names):
+        for soc in sorted(socs_present):
+            for old_cluster, new_cluster in CLUSTER_MAP.items():
+                ops = find_board_file_ops(board_dir, board_name, soc, old_cluster, new_cluster)
+                if not ops:
+                    continue
+                plan.board_file_ops.extend(ops)
+                board_qualifiers.append((board_name, soc, old_cluster, new_cluster))
+                migrated_now.add((board_name, soc, old_cluster))
+
+                kconfig_edit = find_kconfig_edit(
+                    board_dir, board_name, soc, old_cluster, new_cluster
+                )
+                if kconfig_edit:
+                    plan.kconfig_edits.append(kconfig_edit)
+
+    fully_migrated_soc_clusters = soc_clusters_fully_migrated(migrated_now)
+    plan.overlay_renames = find_overlay_renames(fully_migrated_soc_clusters)
+    plan.yaml_edits = find_yaml_qualifier_edits(board_qualifiers)
+    return plan
+
+
+def rewrite_identifier(text: str, old_qualifier: str, new_qualifier: str) -> str:
+    return re.sub(
+        rf"^identifier: {re.escape(old_qualifier)}$",
+        f"identifier: {new_qualifier}",
+        text,
+        flags=re.MULTILINE,
+    )
+
+
+def git_mv(src: Path, dst: Path):
+    subprocess.run(["git", "mv", str(src), str(dst)], cwd=ZEPHYR_BASE, check=True)
+
+
+def apply_board_file_op(mode, triple: BoardFileTriple):
+    old_paths = triple.old_paths()
+    new_paths = triple.new_paths()
+
+    old_identifier_qual = f"{triple.board_name}/{triple.soc}/{triple.old_cluster}" + (
+        "/" + "/".join(part for part in triple.suffix.strip("_").split("_") if part)
+        if triple.suffix
+        else ""
+    )
+    new_identifier_qual = f"{triple.board_name}/{triple.soc}/{triple.new_cluster}" + (
+        "/" + "/".join(part for part in triple.suffix.strip("_").split("_") if part)
+        if triple.suffix
+        else ""
+    )
+
+    if mode == "rename":
+        git_mv(old_paths["dts"], new_paths["dts"])
+        git_mv(old_paths["defconfig"], new_paths["defconfig"])
+        git_mv(old_paths["yaml"], new_paths["yaml"])
+        yaml_text = new_paths["yaml"].read_text()
+        new_paths["yaml"].write_text(
+            rewrite_identifier(yaml_text, old_identifier_qual, new_identifier_qual)
+        )
+    elif mode == "copy":
+        new_paths["dts"].write_bytes(old_paths["dts"].read_bytes())
+        new_paths["defconfig"].write_bytes(old_paths["defconfig"].read_bytes())
+        yaml_text = old_paths["yaml"].read_text()
+        new_paths["yaml"].write_text(
+            rewrite_identifier(yaml_text, old_identifier_qual, new_identifier_qual)
+        )
+        subprocess.run(
+            [
+                "git",
+                "add",
+                str(new_paths["dts"]),
+                str(new_paths["defconfig"]),
+                str(new_paths["yaml"]),
+            ],
+            cwd=ZEPHYR_BASE,
+            check=True,
+        )
+    else:
+        raise ValueError(f"unknown mode {mode!r}")
+
+
+def apply_plan(plan: Plan):
+    for mode, triple in plan.board_file_ops:
+        apply_board_file_op(mode, triple)
+
+    for kconfig_path, anchor_line, new_line in plan.kconfig_edits:
+        text = kconfig_path.read_text()
+        pos = text.index(anchor_line)
+        insert_pos = pos + len(anchor_line)
+        text = text[:insert_pos] + "\n" + new_line + text[insert_pos:]
+        kconfig_path.write_text(text)
+
+    for old_path, new_path in plan.overlay_renames:
+        git_mv(old_path, new_path)
+
+    # Group yaml edits by file so we rewrite each file once.
+    edits_by_file = {}
+    for path, lineno, old_line, new_line in plan.yaml_edits:
+        edits_by_file.setdefault(path, {})[lineno] = new_line
+    for path, line_edits in edits_by_file.items():
+        lines = path.read_text().splitlines(keepends=False)
+        for lineno, new_line in line_edits.items():
+            lines[lineno] = new_line
+        path.write_text("\n".join(lines) + "\n")
+
+
+def print_plan(plan: Plan, board_names):
+    scope = ", ".join(sorted(board_names)) if board_names else "all discovered boards"
+    print(f"Scope: {scope}\n")
+
+    print(f"== Board file operations ({len(plan.board_file_ops)}) ==")
+    for mode, triple in plan.board_file_ops:
+        old_stem = triple.old_stem()
+        new_stem = triple.new_stem()
+        verb = "COPY  " if mode == "copy" else "RENAME"
+        print(
+            f"  {verb} {triple.board_dir.relative_to(ZEPHYR_BASE)}/{old_stem}.{{dts,yaml,_defconfig}}"
+            f" -> {new_stem}.{{dts,yaml,_defconfig}}"
+        )
+
+    print(f"\n== Kconfig edits ({len(plan.kconfig_edits)}) ==")
+    for kconfig_path, _anchor_line, new_line in plan.kconfig_edits:
+        print(f"  {kconfig_path.relative_to(ZEPHYR_BASE)}: add line {new_line.strip()!r}")
+
+    print(f"\n== SoC-scoped overlay renames ({len(plan.overlay_renames)}) ==")
+    for old_path, new_path in plan.overlay_renames:
+        print(f"  RENAME {old_path.relative_to(ZEPHYR_BASE)} -> {new_path.name}")
+
+    print(f"\n== tests.yaml/sample.yaml qualifier edits ({len(plan.yaml_edits)}) ==")
+    for path, lineno, old_line, new_line in plan.yaml_edits:
+        print(
+            f"  {path.relative_to(ZEPHYR_BASE)}:{lineno + 1}: {old_line.strip()!r} -> {new_line.strip()!r}"
+        )
+
+    total = (
+        len(plan.board_file_ops)
+        + len(plan.kconfig_edits)
+        + len(plan.overlay_renames)
+        + len(plan.yaml_edits)
+    )
+    print(f"\nTotal planned changes: {total}")
+    if total == 0:
+        print("Nothing to do.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Perform the migration. Without this flag, only prints the plan.",
+    )
+    parser.add_argument(
+        "--boards",
+        type=str,
+        default=None,
+        help="Comma-separated list of board names (board.yml 'name:' field) to restrict the run to. "
+        "Default: all discovered rp2350a/rp2350b boards.",
+    )
+    args = parser.parse_args()
+
+    filter_names = set(n.strip() for n in args.boards.split(",")) if args.boards else None
+
+    plan = build_plan(filter_names)
+    print_plan(plan, filter_names)
+
+    if args.apply:
+        print("\nApplying...")
+        apply_plan(plan)
+        print("Done.")
+    else:
+        print("\nDry run only - no changes written. Pass --apply to perform these changes.")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
