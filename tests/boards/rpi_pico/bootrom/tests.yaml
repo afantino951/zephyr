@@ -7,7 +7,7 @@ tests:
     platform_allow:
       - rpi_pico/rp2040
       - rpi_pico2/rp2350a/m33_0
-      - rpi_pico2/rp2350a/hazard3
+      - rpi_pico2/rp2350a/hazard3_0
   boards.rpi_pico.bootrom.basic.mcuboot:
     platform_allow:
       - rpi_pico/rp2040/mcuboot

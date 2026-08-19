@@ -1,5 +1,5 @@
-identifier: w5500_evb_pico2/rp2350a/m33
-name: Wiznet W5500 Evaluation Board with RP2350
+identifier: beetle_rp2350/rp2350a/m33_0
+name: DFRobot Beetle RP2350 (Cortex M33)
 type: mcu
 arch: arm
 flash: 2048
@@ -12,13 +12,10 @@ supported:
   - clock
   - counter
   - dma
+  - flash
   - gpio
   - hwinfo
   - i2c
-  - pico_gpio
-  - pico_i2c
-  - pico_serial
-  - pico_spi
   - pwm
   - spi
   - uart

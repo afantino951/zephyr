@@ -1,5 +1,5 @@
-identifier: motion_2350_pro/rp2350a/m33
-name: Cytron Motion 2350 Pro (Cortex M33)
+identifier: w5500_evb_pico2/rp2350a/m33_0
+name: Wiznet W5500 Evaluation Board with RP2350
 type: mcu
 arch: arm
 flash: 2048
@@ -12,10 +12,13 @@ supported:
   - clock
   - counter
   - dma
-  - flash
   - gpio
   - hwinfo
   - i2c
+  - pico_gpio
+  - pico_i2c
+  - pico_serial
+  - pico_spi
   - pwm
   - spi
   - uart
