@@ -7,6 +7,7 @@
  */
 
 #include <zephyr/devicetree.h>
+#include <zephyr/init.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/kernel.h>
 
@@ -47,7 +48,7 @@ BUILD_ASSERT((DT_PARTITION_EXISTS(DT_PHANDLE(CPU1_LAUNCHER_NODE, source_memory))
 static inline void rpi_pico_mailbox_put_blocking(sio_hw_t *const sio_regs, uint32_t value)
 {
 	while (!rpi_pico_mbox_write_ready(sio_regs)) {
-		k_busy_wait(1);
+		arch_nop();
 	}
 
 	rpi_pico_mbox_write(sio_regs, value);
@@ -91,7 +92,7 @@ static void rpi_pico_load_cpu1_image(void)
 #ifdef CONFIG_SOC_RPI_PICO_CPU1_ENABLE_CHECK_VTOR
 static inline bool address_in_range(uint32_t addr, uint32_t base, uint32_t size)
 {
-	return addr >= base && addr < base + size;
+	return addr >= base && addr - base < size;
 }
 
 static inline int rpi_pico_validate_vtor(uint32_t cpu1_sp, uint32_t cpu1_pc)
@@ -128,7 +129,7 @@ static int rpi_pico_reset_cpu1(sio_hw_t *const sio_regs, psm_hw_t *const psm_reg
 	/* Power off, and wait for it to take effect. */
 	hw_set_bits(&psm_regs->frce_off, PSM_FRCE_OFF_PROC1_BITS);
 	while (!(psm_regs->frce_off & PSM_FRCE_OFF_PROC1_BITS)) {
-		k_busy_wait(1);
+		arch_nop();
 	}
 
 	/*
@@ -166,7 +167,7 @@ static void rpi_pico_boot_cpu1(sio_hw_t *const sio_regs, uint32_t vector_table_a
 	} while (seq < ARRAY_SIZE(cmds));
 }
 
-void soc_late_init_hook(void)
+static int rpi_pico_cpu1_init(void)
 {
 #if CPU1_LAUNCHER_HAS_SOURCE_MEM
 	rpi_pico_load_cpu1_image();
@@ -179,7 +180,7 @@ void soc_late_init_hook(void)
 
 #ifdef CONFIG_SOC_RPI_PICO_CPU1_ENABLE_CHECK_VTOR
 	if (rpi_pico_validate_vtor(cpu1_sp, cpu1_pc) != 0) {
-		return;
+		return -EINVAL;
 	}
 #endif /* CONFIG_SOC_RPI_PICO_CPU1_ENABLE_CHECK_VTOR */
 
@@ -187,8 +188,12 @@ void soc_late_init_hook(void)
 
 	if (rpi_pico_reset_cpu1(sio_hw, psm_hw) != 0) {
 		LOG_ERR("CPU1 reset failed.");
-		return;
+		return -EIO;
 	}
 
 	rpi_pico_boot_cpu1(sio_hw, (uint32_t)cpu1_vector_table, cpu1_sp, cpu1_pc);
+
+	return 0;
 }
+
+SYS_INIT(rpi_pico_cpu1_init, PRE_KERNEL_2, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);

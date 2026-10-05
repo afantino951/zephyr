@@ -17,10 +17,10 @@ config SOC_RPI_PICO_CPU1_ENABLE
 		&& $(DT_CPU1_EN_METHOD_IS_PICO_PCBS) \
 		&& !SOC_FAMILY_RPI_PICO_CPU1
 	default y
-	select SOC_LATE_INIT_HOOK
 	help
 	  If enabled, the secondary CPU will be powered up and pointed to its
-	  application entrypoint during SoC late init hook.
+	  application entrypoint during PRE_KERNEL_2 initialization since it is
+	  after clock control and before mailbox driver init.
 
 if SOC_RPI_PICO_CPU1_ENABLE
 
